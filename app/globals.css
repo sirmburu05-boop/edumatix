@@ -1,0 +1,38 @@
+@import "tailwindcss";
+
+:root{
+  --paper:#f2efe6;
+  --paper-line:#dcd6c4;
+  --ink:#1f2a24;
+  --ink-soft:#4b5a50;
+  --seal:#8a5a2b;
+  --amber:#c98a2c;
+  --pass:#2f6b4f;
+  --pass-bg:#e6efe4;
+  --fail:#a34632;
+  --fail-bg:#f5e6e0;
+  --card:#fbfaf4;
+}
+
+@theme inline {
+  --color-paper: var(--paper);
+  --color-paper-line: var(--paper-line);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-seal: var(--seal);
+  --color-amber: var(--amber);
+  --color-pass: var(--pass);
+  --color-pass-bg: var(--pass-bg);
+  --color-fail: var(--fail);
+  --color-fail-bg: var(--fail-bg);
+  --color-card: var(--card);
+  --font-serif: "Source Serif 4", serif;
+  --font-mono: "IBM Plex Mono", monospace;
+}
+
+body {
+  background: var(--paper);
+  color: var(--ink);
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+

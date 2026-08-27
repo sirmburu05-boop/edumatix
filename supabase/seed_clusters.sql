@@ -1,0 +1,20 @@
+-- The 18 real KUCCPS degree clusters, verified against official programme pages.
+insert into clusters (cluster_number, name) values
+(1, 'Law'),
+(2, 'Business, Hospitality, Tourism and Related'),
+(3, 'Communication, Media, Languages, Public Relations, International Relations, Film, Graphics and Related'),
+(4, 'Geosciences and Related'),
+(5, 'Engineering, Engineering Technology, Energy and Related'),
+(6, 'Architecture, Quantity Survey, Building Construction, Urban Planning and Related'),
+(7, 'Computer Science, Cyber Security, Information Technology and Related'),
+(8, 'Agricultural Economics, Agribusiness and Related'),
+(9, 'General Sciences, Biological Sciences, Physics, Chemistry and Related'),
+(10, 'Actuarial Science, Mathematics, Statistics and Related'),
+(11, 'Interior Design, Fashion Design, Textile and Related'),
+(12, 'Sports Science and Related'),
+(13, 'Medicine, Nursing, Dentistry, Pharmacy, Health Sciences and Related'),
+(14, 'History, Archeology, Geography and Related'),
+(15, 'Agriculture, Animal Health, Food Science and Nutrition, Environmental Sciences, Natural Resources and Related'),
+(16, 'Music and Related'),
+(17, 'Education and Related'),
+(18, 'Religious Studies, Theology, Islamic Studies and Related');
