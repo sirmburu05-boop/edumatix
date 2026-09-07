@@ -13,12 +13,20 @@ export default function Home() {
         Cluster points, career guidance, and university data for Kenyan
         high school students — built to be accurate first, everything else second.
       </p>
-      <Link
-        href="/calculator"
-        className="inline-block bg-seal text-white font-mono text-sm uppercase tracking-wide px-6 py-3 rounded-sm hover:bg-[#734a22] transition"
-      >
-        Open Cluster Calculator →
-      </Link>
+<div className="flex gap-3 flex-wrap">
+  <Link
+    href="/calculator"
+    className="inline-block bg-seal text-white font-mono text-sm uppercase tracking-wide px-6 py-3 rounded-sm hover:bg-[#734a22] transition"
+  >
+    Open Cluster Calculator →
+  </Link>
+  <Link
+    href="/institutions"
+    className="inline-block bg-white border border-paper-line text-ink font-mono text-sm uppercase tracking-wide px-6 py-3 rounded-sm hover:border-seal transition"
+  >
+    Browse Institutions →
+  </Link>
+</div>
     </main>
   );
 }
