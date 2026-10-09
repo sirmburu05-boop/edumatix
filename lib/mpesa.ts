@@ -32,6 +32,15 @@ function timestamp(): string {
   return eat.toISOString().replace(/[-:T]/g, "").slice(0, 14);
 }
 
+function signing() {
+  const ts = timestamp();
+  const shortcode = process.env.MPESA_SHORTCODE!;
+  const password = Buffer.from(
+    `${shortcode}${process.env.MPESA_PASSKEY}${ts}`
+  ).toString("base64");
+  return { ts, shortcode, password };
+}
+
 export async function stkPush(opts: {
   phone: string;
   amount: number;
@@ -39,11 +48,7 @@ export async function stkPush(opts: {
   description: string;
 }) {
   const token = await getToken();
-  const ts = timestamp();
-  const shortcode = process.env.MPESA_SHORTCODE!;
-  const password = Buffer.from(
-    `${shortcode}${process.env.MPESA_PASSKEY}${ts}`
-  ).toString("base64");
+  const { ts, shortcode, password } = signing();
 
   // Paybill: CustomerPayBillOnline, PartyB = shortcode.
   // Till (Buy Goods): CustomerBuyGoodsOnline, PartyB = till number.
@@ -72,4 +77,39 @@ export async function stkPush(opts: {
     throw new Error(json.errorMessage || json.ResponseDescription || "STK push failed");
   }
   return json as { MerchantRequestID: string; CheckoutRequestID: string };
+}
+
+export type QueryResult = {
+  state: "success" | "failed" | "pending";
+  code?: number;
+  desc?: string;
+};
+
+// Ask Safaricom directly what happened to an STK push (used when a callback is lost).
+export async function stkQuery(checkoutRequestId: string): Promise<QueryResult> {
+  const token = await getToken();
+  const { ts, shortcode, password } = signing();
+
+  const res = await fetch(`${BASE}/mpesa/stkpushquery/v1/query`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      BusinessShortCode: shortcode,
+      Password: password,
+      Timestamp: ts,
+      CheckoutRequestID: checkoutRequestId,
+    }),
+    cache: "no-store",
+  });
+  const json = await res.json().catch(() => ({}));
+
+  // While the customer has not finished, Daraja answers with an error body
+  // (no ResultCode) or code 4999 ("still being processed"). Treat both as pending.
+  if (json.ResultCode === undefined || json.ResultCode === null) {
+    return { state: "pending", desc: json.errorMessage || json.ResponseDescription };
+  }
+  const code = Number(json.ResultCode);
+  if (code === 0) return { state: "success", code, desc: json.ResultDesc };
+  if (code === 4999) return { state: "pending", code, desc: json.ResultDesc };
+  return { state: "failed", code, desc: json.ResultDesc };
 }

@@ -10,28 +10,51 @@ export default function ActivatePage() {
   const [phone, setPhone] = useState("");
   const [stage, setStage] = useState<Stage>("idle");
   const [message, setMessage] = useState("");
+  const [checking, setChecking] = useState(false);
   const timer = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  useEffect(() => () => { if (timer.current) clearInterval(timer.current); }, []);
+  function goToDashboard() {
+    setStage("success");
+    setTimeout(() => { router.push("/dashboard"); router.refresh(); }, 1500);
+  }
+
+  // Safety net: if the student paid earlier but the confirmation was lost, recover it.
+  async function recheck(silent: boolean) {
+    if (!silent) { setChecking(true); setMessage(""); }
+    const res = await fetch("/api/mpesa/reconcile", { method: "POST" });
+    const j = await res.json().catch(() => ({}));
+    if (j.activated) { goToDashboard(); return; }
+    if (!silent) {
+      setChecking(false);
+      setMessage("No completed payment found yet. If you just paid, wait a minute and try again.");
+    }
+  }
+
+  useEffect(() => {
+    recheck(true);
+    return () => { if (timer.current) clearInterval(timer.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   function poll(id: string) {
     let tries = 0;
     timer.current = setInterval(async () => {
       tries++;
-      const res = await fetch(`/api/mpesa/status?id=${encodeURIComponent(id)}`);
+      // From ~15 seconds on, every 5th poll also asks Safaricom directly.
+      const verify = tries >= 5 && tries % 5 === 0 ? "&verify=1" : "";
+      const res = await fetch(`/api/mpesa/status?id=${encodeURIComponent(id)}${verify}`);
       const j = await res.json().catch(() => ({}));
       if (j.status === "success") {
         clearInterval(timer.current!);
-        setStage("success");
-        setTimeout(() => { router.push("/dashboard"); router.refresh(); }, 1500);
+        goToDashboard();
       } else if (j.status === "failed" || j.status === "cancelled") {
         clearInterval(timer.current!);
         setStage("failed");
         setMessage(j.status === "cancelled" ? "You cancelled the payment." : (j.message || "Payment failed."));
-      } else if (tries >= 30) {
+      } else if (tries >= 40) {
         clearInterval(timer.current!);
         setStage("failed");
-        setMessage("We did not receive confirmation. If money was deducted, it will activate shortly - refresh your dashboard.");
+        setMessage("We have not received confirmation yet. If money was deducted, press Check my payment below.");
       }
     }, 3000);
   }
@@ -73,7 +96,7 @@ export default function ActivatePage() {
           >
             {stage === "sending" ? "Sending prompt..." : "Pay KSh 299 with M-Pesa"}
           </button>
-          {stage === "failed" && <p className="text-sm text-red-700">{message}</p>}
+          {message && <p className="text-sm text-red-700">{message}</p>}
         </div>
       )}
 
@@ -86,6 +109,18 @@ export default function ActivatePage() {
       {stage === "success" && (
         <div className="bg-pass-bg border border-pass rounded-sm p-5 text-sm text-pass font-semibold">
           Payment received. Your account is activated. Redirecting...
+        </div>
+      )}
+
+      {stage !== "success" && stage !== "waiting" && (
+        <div className="mt-8 pt-5 border-t border-paper-line text-sm">
+          <p className="text-ink-soft mb-2">Already paid but not activated?</p>
+          <button
+            onClick={() => recheck(false)} disabled={checking}
+            className="border border-paper-line bg-white font-mono text-xs uppercase tracking-wide px-4 py-2 rounded-sm hover:border-seal disabled:opacity-50"
+          >
+            {checking ? "Checking..." : "Check my payment"}
+          </button>
         </div>
       )}
     </main>
