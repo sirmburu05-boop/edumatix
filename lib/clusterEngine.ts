@@ -14,7 +14,8 @@
 
 import { GRADES, GRADE_POINTS, GROUPS, ALL_SUBJECTS, SUBJECT_CODES } from "./subjects";
 export { GRADES, GRADE_POINTS, GROUPS, ALL_SUBJECTS, SUBJECT_CODES };
-export type { GroupKey } from "./subjects";
+import type { GroupKey } from "./subjects";
+export type { GroupKey };
 
 export interface Slot {
   label: string;
