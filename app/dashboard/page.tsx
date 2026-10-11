@@ -75,6 +75,11 @@ export default async function DashboardPage() {
                   🔒 Requires activation
                 </span>
               )}
+              {f.access === "teaser" && !activated && (
+                <span className="block mt-1 font-mono text-[11px] uppercase tracking-wide text-ink-soft font-normal">
+                  Results unlock on activation
+                </span>
+              )}
             </Link>
           );
         })}

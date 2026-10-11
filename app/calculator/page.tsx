@@ -1,14 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import {
-  ALL_SUBJECTS,
-  GRADES,
-  GROUPS,
-  SUBJECT_CODES,
-  calculateAllClusters,
-  type ClusterResult,
-} from "@/lib/clusterEngine";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+// NOTE: only client-safe data is imported here. The cluster rules and the
+// calculation live on the server (/api/calculate), so locked students never
+// receive real results.
+import { ALL_SUBJECTS, GRADES, GROUPS, SUBJECT_CODES } from "@/lib/subjects";
 
 const SUBJECT_LIST = [...ALL_SUBJECTS].sort(
   (a, b) => (SUBJECT_CODES[a] ?? 999) - (SUBJECT_CODES[b] ?? 999)
@@ -20,12 +17,33 @@ function subjectGroupOf(name: string): string | undefined {
   );
 }
 
+type Row = { n: number; name: string; points: number; r: number; missing?: string };
+type Unlocked = { locked: false; loggedIn: true; m: number; best7: [string, number][]; results: Row[] };
+type Locked = { locked: true; loggedIn: boolean; clusters: { n: number; name: string }[] };
+
+// Looks like a real value but is the same for everyone: nothing is leaked.
+const PLACEHOLDER = "00.000";
+
 export default function CalculatorPage() {
   const [selected, setSelected] = useState<Record<string, string>>({});
   const [openPicker, setOpenPicker] = useState<string | null>(null);
-  const [results, setResults] = useState<ClusterResult[] | null>(null);
-  const [m, setM] = useState(0);
-  const [best7, setBest7] = useState<[string, number][]>([]);
+  const [outcome, setOutcome] = useState<Unlocked | Locked | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [prefilled, setPrefilled] = useState(false);
+
+  // Pre-fill saved grades so a returning student never re-enters them.
+  useEffect(() => {
+    fetch("/api/grades")
+      .then((r) => r.json())
+      .then((j) => {
+        if (j.grades && typeof j.grades === "object") {
+          setSelected(j.grades);
+          setPrefilled(true);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const count = Object.keys(selected).length;
   const hasCore = ["English", "Kiswahili", "Mathematics"].every((s) => selected[s]);
@@ -42,29 +60,41 @@ export default function CalculatorPage() {
       }
       return next;
     });
+    setOutcome(null);
     setOpenPicker(null);
   }
 
-  function calculate() {
-    const { results, m, best7 } = calculateAllClusters(selected);
-    setResults(results);
-    setM(m);
-    setBest7(best7);
+  async function calculate() {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/calculate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ grades: selected }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error || "Something went wrong.");
+      setOutcome(j);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Something went wrong.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   const groupStrength = useMemo(() => {
     const totals: Record<string, number[]> = { I: [], II: [], III: [], IV: [], V: [] };
     Object.entries(selected).forEach(([name, grade]) => {
       const g = subjectGroupOf(name);
-      if (g) {
-        const points = GRADES.find(([l]) => l === grade)?.[1] ?? 0;
-        totals[g].push(points);
-      }
+      if (g) totals[g].push(GRADES.find(([l]) => l === grade)?.[1] ?? 0);
     });
     return totals;
   }, [selected]);
 
-  const topPicks = results?.filter((c) => c.points > 0).slice(0, 5) ?? [];
+  const unlocked = outcome && !outcome.locked ? outcome : null;
+  const locked = outcome && outcome.locked ? outcome : null;
+  const topPicks = unlocked?.results.filter((c) => c.points > 0).slice(0, 5) ?? [];
 
   return (
     <main className="max-w-4xl mx-auto px-6 py-10 pb-20">
@@ -76,6 +106,10 @@ export default function CalculatorPage() {
         calculate. Rules verified directly against official KUCCPS programme
         pages, cluster by cluster.
       </p>
+
+      {prefilled && (
+        <div className="text-xs font-mono text-pass mb-3">✓ Your saved grades were loaded.</div>
+      )}
 
       {/* Subject list */}
       <section className="bg-card border border-paper-line rounded-sm mb-6">
@@ -114,10 +148,7 @@ export default function CalculatorPage() {
                     {GRADES.map(([label]) => (
                       <button
                         key={label}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setGrade(subj, label);
-                        }}
+                        onClick={(e) => { e.stopPropagation(); setGrade(subj, label); }}
                         className={`font-mono font-bold text-[13px] py-2 rounded-sm border ${
                           grade === label
                             ? "bg-seal text-white border-seal"
@@ -128,10 +159,7 @@ export default function CalculatorPage() {
                       </button>
                     ))}
                     <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setGrade(subj, null);
-                      }}
+                      onClick={(e) => { e.stopPropagation(); setGrade(subj, null); }}
                       className="col-span-6 text-[11px] uppercase tracking-wide text-fail bg-white border border-dashed border-fail rounded-sm py-1.5"
                     >
                       Mark as not taken
@@ -153,24 +181,105 @@ export default function CalculatorPage() {
 
       <button
         onClick={calculate}
-        disabled={!canCalculate}
-        className="font-mono text-xs uppercase font-bold tracking-wide bg-seal text-white px-6 py-3 rounded-sm mb-6 disabled:bg-[#b9b09a] disabled:cursor-not-allowed hover:enabled:bg-[#734a22]"
+        disabled={!canCalculate || loading}
+        className="font-mono text-xs uppercase font-bold tracking-wide bg-seal text-white px-6 py-3 rounded-sm mb-3 disabled:bg-[#b9b09a] disabled:cursor-not-allowed hover:enabled:bg-[#734a22]"
       >
-        Calculate cluster points
+        {loading ? "Calculating..." : "Calculate cluster points"}
       </button>
+      {error && <p className="text-sm text-red-700 mb-4">{error}</p>}
 
-      {results && (
+      {/* ---------- LOCKED: teaser with blurred results ---------- */}
+      {locked && (
+        <>
+          <div className="bg-[#fff8ea] border border-amber rounded-sm p-5 mb-4">
+            <h2 className="font-serif font-semibold text-lg mb-1">🔒 Activate your account to see your results</h2>
+            <p className="text-sm text-ink-soft mb-3">
+              Your grades are ready. A one-time <b>KSh 299</b> activation reveals your points for all
+              18 clusters, your best clusters to pursue, and your subject analysis.
+              {locked.loggedIn && " Your grades are saved, so you will not have to enter them again."}
+            </p>
+            {locked.loggedIn ? (
+              <Link href="/activate" className="inline-block bg-seal text-white font-mono text-xs uppercase tracking-wide px-5 py-2.5 rounded-sm hover:bg-[#734a22]">
+                Activate now - KSh 299
+              </Link>
+            ) : (
+              <div className="flex gap-2 flex-wrap">
+                <Link href="/signup" className="inline-block bg-seal text-white font-mono text-xs uppercase tracking-wide px-5 py-2.5 rounded-sm hover:bg-[#734a22]">
+                  Create account
+                </Link>
+                <Link href="/login" className="inline-block bg-white border border-paper-line font-mono text-xs uppercase tracking-wide px-5 py-2.5 rounded-sm hover:border-seal">
+                  Log in
+                </Link>
+              </div>
+            )}
+          </div>
+
+          <section className="bg-card border border-paper-line rounded-sm mb-6">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-paper-line">
+              <h2 className="font-serif font-semibold text-[17px]">Your 18 clusters</h2>
+              <span className="text-xs text-ink-soft">in cluster order</span>
+            </div>
+            <table className="w-full text-[13.5px]">
+              <thead>
+                <tr className="border-b-2 border-ink text-left text-[11px] uppercase tracking-wide text-ink-soft">
+                  <th className="py-2 px-3">#</th>
+                  <th className="py-2 px-3">Cluster</th>
+                  <th className="py-2 px-3 text-right">Points</th>
+                </tr>
+              </thead>
+              <tbody>
+                {locked.clusters.map((c) => (
+                  <tr key={c.n} className="border-b border-paper-line">
+                    <td className="py-2 px-3 font-mono text-seal font-semibold">C{c.n}</td>
+                    <td className="py-2 px-3 font-semibold">{c.name}</td>
+                    <td className="py-2 px-3 text-right font-mono font-bold text-[14.5px]">
+                      <span aria-hidden className="blur-sm select-none">{PLACEHOLDER}</span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </section>
+
+          <section className="bg-card border border-paper-line rounded-sm p-5 grid md:grid-cols-2 gap-6">
+            <div aria-hidden className="blur-sm select-none">
+              <h3 className="font-serif font-semibold text-[15px] mb-2">Best clusters to pursue</h3>
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="flex justify-between py-2 border-b border-dashed border-paper-line">
+                  <span className="font-semibold text-[13.5px]">C0 · Cluster name here</span>
+                  <span className="font-mono font-bold">{PLACEHOLDER}</span>
+                </div>
+              ))}
+            </div>
+            <div aria-hidden className="blur-sm select-none">
+              <h3 className="font-serif font-semibold text-[15px] mb-2">Subject-group strength</h3>
+              {["I", "II", "III", "IV", "V"].map((g) => (
+                <div key={g} className="flex items-center gap-2 mb-2 text-xs">
+                  <div className="w-32 text-ink-soft">Group {g}</div>
+                  <div className="flex-1 h-2 bg-[#eee9d8] rounded-sm overflow-hidden">
+                    <div className="h-full bg-amber w-1/2" />
+                  </div>
+                  <div className="w-8 text-right font-mono">0.0</div>
+                </div>
+              ))}
+            </div>
+          </section>
+        </>
+      )}
+
+      {/* ---------- UNLOCKED: real results ---------- */}
+      {unlocked && (
         <>
           <section className="bg-card border border-paper-line rounded-sm mb-6">
             <div className="flex items-center justify-between px-5 py-3 border-b border-paper-line">
-              <h2 className="font-serif font-semibold text-[17px]">Your 20 clusters</h2>
+              <h2 className="font-serif font-semibold text-[17px]">Your 18 clusters</h2>
               <span className="text-xs text-ink-soft">ranked by points</span>
             </div>
             <div className="flex flex-wrap gap-x-6 gap-y-1 px-5 py-3 border-b border-paper-line bg-[#f7f5ec] font-mono text-xs text-ink-soft">
               <div>
-                Best 7 subjects (m): <b className="text-ink text-[15px]">{m.toFixed(0)}</b> / 84
+                Best 7 subjects (m): <b className="text-ink text-[15px]">{unlocked.m.toFixed(0)}</b> / 84
               </div>
-              <div>{best7.map(([n, p]) => `${n} (${p})`).join(" · ")}</div>
+              <div>{unlocked.best7.map(([n, p]) => `${n} (${p})`).join(" · ")}</div>
             </div>
             <table className="w-full text-[13.5px]">
               <thead>
@@ -182,7 +291,7 @@ export default function CalculatorPage() {
                 </tr>
               </thead>
               <tbody>
-                {results.map((c, i) => (
+                {unlocked.results.map((c, i) => (
                   <tr key={c.n} className="border-b border-paper-line hover:bg-[#fbf6e8]">
                     <td className="py-2 px-3 font-mono text-ink-soft">{i + 1}</td>
                     <td className="py-2 px-3 font-mono text-seal font-semibold">C{c.n}</td>
@@ -208,14 +317,10 @@ export default function CalculatorPage() {
           <section className="bg-card border border-paper-line rounded-sm grid md:grid-cols-2">
             <div className="p-5 border-b md:border-b-0 md:border-r border-paper-line">
               <h3 className="font-serif font-semibold text-[15px] mb-2">Best clusters to pursue</h3>
-              {topPicks.length === 0 && (
-                <p className="text-sm text-ink-soft">No clusters qualify yet.</p>
-              )}
+              {topPicks.length === 0 && <p className="text-sm text-ink-soft">No clusters qualify yet.</p>}
               {topPicks.map((c) => (
                 <div key={c.n} className="flex justify-between py-2 border-b border-dashed border-paper-line last:border-none">
-                  <div>
-                    <div className="font-semibold text-[13.5px]">C{c.n} · {c.name}</div>
-                  </div>
+                  <div className="font-semibold text-[13.5px]">C{c.n} · {c.name}</div>
                   <div className="font-mono font-bold text-pass">{c.points.toFixed(3)}</div>
                 </div>
               ))}

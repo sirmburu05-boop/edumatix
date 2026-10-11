@@ -1,12 +1,15 @@
-// SERVER ONLY. One place that decides what is free and what needs activation.
+// SERVER ONLY. One place that describes how each feature behaves.
+//   "free"   : fully open to everyone
+//   "teaser" : everyone can use the page, but RESULTS are hidden until activated
+//              (the server withholds the data, it is not just blurred)
+//   "paid"   : the page itself needs activation
 import { createClient } from "@/lib/supabase/server";
 
-// Change "free" <-> "paid" here to move a feature in or out of the paywall.
 export const FEATURE_ACCESS = {
-  calculator: "free",
-  institutions: "free",
-  career: "paid",
-  tutor: "paid",
+  calculator: "teaser",
+  institutions: "free", // will become a teaser (hidden cutoffs/programmes) in the next step
+  career: "paid",       // will become a teaser when Career Guidance is built
+  tutor: "paid",        // will become a teaser when the AI Tutor is built
 } as const;
 
 export async function getAccess() {
